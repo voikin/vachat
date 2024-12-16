@@ -1,0 +1,66 @@
+.login-card {
+	background: #5a5a5a;
+	box-shadow: #222222;
+	width: 300px;
+	margin-top: 50px;
+	border-radius: 1rem;
+	padding: 10px 20px;
+	color: #e3e3e3;
+}
+
+.login-card__form {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	font-weight: 600;
+}
+
+.login-card__item {
+	/* display: flex; */
+    /* justify-content: center; */
+}
+
+.login-card__item:not(:first-child) {
+	margin-top: 10px;
+}
+
+.login-card__input {
+	margin-top: 5px;
+	padding: 5px 10px;
+	border-radius: 5px;
+	outline: none;
+	border: 2px solid transparent;
+	transition: background-color 0.2s ease-in-out, border 0.2s ease-in-out;
+}
+
+.login-card__input__invalid {
+	background-color: #ffe8e8;
+	border: 2px solid #fbb5b5;
+}
+
+.login-card__button {
+	padding: 5px 10px;
+	border-radius: 5px;
+	outline: none;
+	border: none;
+	cursor: pointer;
+	background-color: #28c282;
+	color: white;
+	font-weight: 600;
+	transition: background-color 0.1s ease-in-out;
+}
+
+.login-card__button:hover {
+	background-color: #27b378;
+}
+
+.login-card__button:active {
+	background-color: #25a771;
+}
+
+.login-card__message {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
