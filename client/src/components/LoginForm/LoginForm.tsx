@@ -21,7 +21,7 @@ import {
 	Typography,
 	styled,
 } from '@mui/material'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 const StyledLink = styled(Link)`
 	color: inherit;
@@ -35,6 +35,7 @@ const StyledLink = styled(Link)`
 export default function LoginForm() {
 	const { login, isAuth } = useAuthStore()
 	const [errorMessage, setErrorMessage] = useState('')
+	const navigate = useNavigate()
 
 	const loginMutation = useMutation(AuthService.login, {
 		onSuccess: (data: AuthResponse) => login(data),
@@ -56,14 +57,9 @@ export default function LoginForm() {
 		errors: FieldErrors<ILoginForm>
 	) => console.log(errors)
 
-	useEffect(() => clearErrors(), [])
+	useEffect(() => clearErrors(), [clearErrors])
 
-	if (isAuth)
-		return (
-			<Alert severity='success' sx={{ marginTop: '16px' }}>
-				Вход выполнен успешно!
-			</Alert>
-		)
+	if (isAuth) navigate('/')
 
 	return (
 		<Paper

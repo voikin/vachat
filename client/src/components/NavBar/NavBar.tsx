@@ -29,9 +29,6 @@ const NavBar = () => {
         )}
         {isAuth ? (
           <>
-            <Button component={Link} to="/user" color="inherit" variant="text">
-              Личный кабинет
-            </Button>
             <Button
               component={Link}
               to="/"
