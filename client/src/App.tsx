@@ -45,6 +45,7 @@ const App = () => {
   useEffect(() => {
     const accessToken = localStorage.getItem("accessToken");
     if (accessToken) loginMutation.mutate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
