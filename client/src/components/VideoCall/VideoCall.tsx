@@ -47,9 +47,10 @@ const VideoCall: React.FC = () => {
   const { isAuth } = useAuthStore();
   const navigate = useNavigate();
 
-  const { socket } = useSocket({
+  const { socket, ping } = useSocket({
     url: API_URL,
     authToken: localStorage.getItem("accessToken") || "",
+    pingInterval: 1000,
   });
 
   const {
@@ -139,7 +140,7 @@ const VideoCall: React.FC = () => {
       socket.off("signal");
       socket.off("peer-disconnected");
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     socket,
     roomId,
@@ -222,6 +223,10 @@ const VideoCall: React.FC = () => {
       <Typography variant="h5" className={styles.videoCallTitle}>
         Видеозвонок
       </Typography>
+
+      {(created || joined) && (
+        <Typography variant="caption">Пинг: {ping}</Typography>
+      )}
 
       {!created && !joined && (
         <div className={styles.roomForm}>
