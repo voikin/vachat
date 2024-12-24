@@ -1,9 +1,20 @@
 import React, { useEffect, useRef, useState } from "react";
-import io, { Socket } from "socket.io-client";
-import { Button, TextField, Typography, Box } from "@mui/material";
-import { API_URL } from "../../http";
+import {
+  Button,
+  TextField,
+  Typography,
+  Slider,
+  Snackbar,
+  Alert,
+} from "@mui/material";
 import { useAuthStore } from "../../stores/authStore";
 import { useNavigate } from "react-router-dom";
+import { useWebRTC } from "../../hooks/useWebRTC";
+import { useSocket } from "../../hooks/useSocket";
+import { API_URL } from "../../http";
+
+/* Импортируем наш CSS-модуль */
+import styles from "./VideoCall.module.css";
 
 interface RoomCreatedPayload {
   roomId: string;
@@ -27,83 +38,94 @@ const VideoCall: React.FC = () => {
   const [joined, setJoined] = useState<boolean>(false);
   const [created, setCreated] = useState<boolean>(false);
   const [, setReady] = useState<boolean>(false);
-  const [socket, setSocket] = useState<Socket | undefined>(undefined);
+
+  const [remoteVolume, setRemoteVolume] = useState<number>(1);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-
   const { isAuth } = useAuthStore();
   const navigate = useNavigate();
+
+  const { socket } = useSocket({
+    url: API_URL,
+    authToken: localStorage.getItem("accessToken") || "",
+  });
+
+  const {
+    pcRef,
+    isCamOn,
+    isMicOn,
+    initPeerConnection,
+    getMediaStream,
+    addLocalTracksToConnection,
+    createOffer,
+    createAnswer,
+    setRemoteDescription,
+    addIceCandidate,
+    toggleCamera,
+    toggleMicrophone,
+  } = useWebRTC({
+    onRemoteStream: (stream) => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = stream;
+      }
+    },
+    onIceCandidate: (candidate) => {
+      if (!roomId || !socket) return;
+      socket.emit("signal", {
+        roomId,
+        type: "candidate",
+        candidate: candidate.toJSON(),
+      } as SignalPayload);
+    },
+    onError: (error) => {
+      console.error("WebRTC Error: ", error);
+    },
+  });
 
   useEffect(() => {
     if (!isAuth) {
       navigate("/login");
     }
-
-    const newSocket = io(API_URL, {
-      auth: {
-        token: localStorage.getItem("accessToken"),
-      },
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.disconnect();
-    };
-  }, []);
+  }, [isAuth, navigate]);
 
   useEffect(() => {
     if (!socket) return;
 
-    // Комната создана
     socket.on("room-created", ({ roomId }: RoomCreatedPayload) => {
       setRoomId(roomId);
       setCreated(true);
     });
 
-    // Присоединение к комнате
     socket.on("room-joined", () => {
       setJoined(true);
     });
 
-    // Оба клиента готовы — начинаем обмен SDP
     socket.on("ready", () => {
       setReady(true);
       startCall();
     });
 
-    // Обработка сигналинга (SDP offer/answer/ICE candidates)
     socket.on(
       "signal",
       async ({ type, sdp, candidate }: SignalEventPayload) => {
         if (!pcRef.current) return;
 
         if (type === "offer" && sdp) {
-          await pcRef.current.setRemoteDescription(
-            new RTCSessionDescription(sdp)
-          );
-          const answer = await pcRef.current.createAnswer();
-          await pcRef.current.setLocalDescription(answer);
-          socket.emit("signal", { roomId, type: "answer", sdp: answer });
-        } else if (type === "answer" && sdp) {
-          await pcRef.current.setRemoteDescription(
-            new RTCSessionDescription(sdp)
-          );
-        } else if (type === "candidate" && candidate) {
-          try {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (e) {
-            console.error("Error adding ICE candidate", e);
+          await setRemoteDescription(sdp);
+          const answer = await createAnswer();
+          if (answer) {
+            socket.emit("signal", { roomId, type: "answer", sdp: answer });
           }
+        } else if (type === "answer" && sdp) {
+          await setRemoteDescription(sdp);
+        } else if (type === "candidate" && candidate) {
+          await addIceCandidate(candidate);
         }
       }
     );
 
-    // Второй участник отключился
     socket.on("peer-disconnected", () => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
@@ -117,8 +139,15 @@ const VideoCall: React.FC = () => {
       socket.off("signal");
       socket.off("peer-disconnected");
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, socket]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    socket,
+    roomId,
+    pcRef,
+    createAnswer,
+    setRemoteDescription,
+    addIceCandidate,
+  ]);
 
   const createRoom = () => {
     socket?.emit("create-room");
@@ -131,62 +160,71 @@ const VideoCall: React.FC = () => {
   };
 
   const startCall = async () => {
-    pcRef.current = new RTCPeerConnection({
+    initPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
 
-    if (!pcRef.current) return;
+    const stream = await getMediaStream();
+    if (!stream) return;
 
-    pcRef.current.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket?.emit("signal", {
-          roomId,
-          type: "candidate",
-          candidate: event.candidate.toJSON(),
-        } as SignalPayload);
-      }
-    };
+    addLocalTracksToConnection();
 
-    pcRef.current.ontrack = (event) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-      }
-    };
-
-    try {
-      localStreamRef.current = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      localStreamRef.current.getTracks().forEach((track) => {
-        pcRef.current?.addTrack(track, localStreamRef.current as MediaStream);
-      });
-
-      if (localVideoRef.current && localStreamRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-      }
-    } catch (error) {
-      console.error("Error getting user media", error);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
     }
 
-    // Если мы создатель комнаты и второй присоединился, шлем offer
-    if (created && pcRef.current) {
-      const offer = await pcRef.current.createOffer();
-      await pcRef.current.setLocalDescription(offer);
-      socket?.emit("signal", {
-        roomId,
-        type: "offer",
-        sdp: offer,
-      } as SignalPayload);
+    if (created) {
+      const offer = await createOffer();
+      if (offer && socket) {
+        socket.emit("signal", {
+          roomId,
+          type: "offer",
+          sdp: offer,
+        } as SignalPayload);
+      }
     }
   };
 
+  const handleVolumeChange = (_: Event, newValue: number | number[]) => {
+    const volume = Array.isArray(newValue) ? newValue[0] : newValue;
+    setRemoteVolume(volume);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.volume = volume;
+    }
+  };
+
+  const copyRoomIdToClipboard = async () => {
+    if (!roomId) return;
+    try {
+      await navigator.clipboard.writeText(roomId);
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Не удалось скопировать:", error);
+    }
+  };
+
+  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const handleCloseSnackbar = () => setSnackbarOpen(false);
+
   return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h5">Видеозвонок</Typography>
+    <div className={styles.container}>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={2000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert severity="success" onClose={handleCloseSnackbar}>
+          ID скопирован!
+        </Alert>
+      </Snackbar>
+
+      <Typography variant="h5" className={styles.videoCallTitle}>
+        Видеозвонок
+      </Typography>
+
       {!created && !joined && (
-        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
+        <div className={styles.roomForm}>
           <Button variant="contained" onClick={createRoom}>
             Создать комнату
           </Button>
@@ -198,64 +236,69 @@ const VideoCall: React.FC = () => {
           <Button variant="contained" onClick={joinRoom}>
             Подключиться
           </Button>
-        </Box>
+        </div>
       )}
+
       {(created || joined) && (
-        <Typography variant="body1">Вы в комнате: {roomId}</Typography>
+        <>
+          <div className={styles.roomInfoContainer}>
+            <Typography variant="body1">Вы в комнате: {roomId}</Typography>
+            <Button variant="outlined" onClick={copyRoomIdToClipboard}>
+              Скопировать ID
+            </Button>
+          </div>
+
+          <div className={styles.controlButtons}>
+            <Button
+              variant="contained"
+              color={!isCamOn ? "primary" : "secondary"}
+              onClick={toggleCamera}
+            >
+              {isCamOn ? "Отключить камеру" : "Включить камеру"}
+            </Button>
+            <Button
+              variant="contained"
+              color={!isMicOn ? "primary" : "secondary"}
+              onClick={toggleMicrophone}
+            >
+              {isMicOn ? "Отключить микрофон" : "Включить микрофон"}
+            </Button>
+          </div>
+
+          <div className={styles.volumeSliderContainer}>
+            <Typography gutterBottom>Громкость собеседника</Typography>
+            <Slider
+              min={0}
+              max={1}
+              step={0.1}
+              value={remoteVolume}
+              onChange={handleVolumeChange}
+            />
+          </div>
+        </>
       )}
-      <Box
-        sx={{
-          mt: 2,
-          display: "flex",
-          gap: 2,
-          flexDirection: { xs: "column", sm: "row" },
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Box
-          sx={{
-            width: { xs: "100%", sm: "45%" },
-            aspectRatio: "16/9", // Сохраняет пропорции 16:9
-            border: "1px solid #ccc",
-            overflow: "hidden",
-          }}
-        >
+
+      <div className={styles.videoRow}>
+        <div className={styles.videoBox}>
           <video
             ref={localVideoRef}
             autoPlay
             playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover", // Сохраняет обрезку по размеру контейнера
-              transform: "rotateY(180deg)",
-            }}
+            className={styles.videoElement}
             muted
           />
-        </Box>
-        <Box
-          sx={{
-            width: { xs: "100%", sm: "45%" },
-            aspectRatio: "16/9",
-            border: "1px solid #ccc",
-            overflow: "hidden",
-          }}
-        >
+        </div>
+
+        <div className={styles.videoBox}>
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              transform: "rotateY(180deg)",
-            }}
+            className={styles.videoElement}
           />
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   );
 };
 

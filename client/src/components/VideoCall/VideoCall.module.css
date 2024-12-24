@@ -1,0 +1,64 @@
+/* Главный контейнер */
+.container {
+    padding: 16px;
+  }
+  
+  /* Заголовок */
+  .videoCallTitle {
+    margin-bottom: 16px;
+  }
+  
+  /* Контейнер для формы создания/входа в комнату */
+  .roomForm {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  
+  /* Контейнер для ID комнаты и кнопки "Скопировать" */
+  .roomInfoContainer {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  
+  /* Контейнер для кнопок управления (камера/микрофон) */
+  .controlButtons {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  
+  /* Контейнер для слайдера громкости */
+  .volumeSliderContainer {
+    margin-top: 16px;
+    width: 200px;
+  }
+  
+  /* Контейнер для двух видео */
+  .videoRow {
+    margin-top: 16px;
+    display: flex;
+    gap: 16px;
+    flex-direction: row; /* на маленьких экранах можно заменить на column через @media */
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  /* Блок для конкретного видео */
+  .videoBox {
+    width: 45%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid #ccc;
+    overflow: hidden;
+  }
+  
+  /* Стили для video-элемента */
+  .videoElement {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: rotateY(180deg);
+  }
+  
