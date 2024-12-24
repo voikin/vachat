@@ -5,8 +5,11 @@ import { UsersModule } from './users/users.module'
 import { MailModule } from './auth/mail/mail.module'
 import { MailService } from './auth/mail/mail.service'
 import { AuthModule } from './auth/auth.module'
+
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface'
 import * as cors from 'cors'
+import { SignalingModule } from './signaling/signaling.module'
+
 @Module({
     imports: [
         ConfigModule.forRoot({
@@ -16,8 +19,11 @@ import * as cors from 'cors'
         UsersModule,
         AuthModule,
         MailModule,
+        SignalingModule,
     ],
-    providers: [MailService],
+    providers: [
+        MailService
+    ],
 })
 export class AppModule {
     configure(consumer: MiddlewareConsumer) {
